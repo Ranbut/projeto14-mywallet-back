@@ -11,6 +11,12 @@ server.use(cors());
 
 const PORT = 5000;
 
+const usuarioSchema = joi.object({
+  name: joi.string().min(3).required(),
+  email: joi.string().email({ tlds: { allow: false } }),
+  password: joi.string().min(6).required()
+});
+
 const mongoClient = new MongoClient(process.env.DATABASE_URL);
 
 let db;
@@ -23,8 +29,36 @@ try{
     console.log(`Erro ao conectar ao MongoDB: ${err}`);
 };
 
-server.post("/sign-up", async (req, res)=>{
+const usuariosCollection = db.collection("usuarios");
 
+server.post("/sign-up", async (req, res)=>{
+  const {name, email, password} = req.body;
+
+  const usuarioExiste = await usuariosCollection.findOne({name, email});
+
+  const validacao = usuarioSchema.validate({name, email, password}, { abortEarly: false });
+
+  if(validacao.error){
+      const erros = validacao.error.details.map((detail) => detail.message);
+      res.status(422).send(erros);
+      return;
+  };
+
+  if(usuarioExiste){
+      res.sendStatus(409);
+      return;
+  }
+
+  try{
+     await usuariosCollection.insertOne({
+      name,
+      email,
+      password
+     });
+     res.sendStatus(201);
+  }catch(err){
+      res.status(500).send(err);
+  }
 });
 
 server.get("/login", async (req, res)=>{
