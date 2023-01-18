@@ -11,10 +11,15 @@ server.use(cors());
 
 const PORT = 5000;
 
-const usuarioSchema = joi.object({
+const cadastroSchema = joi.object({
   name: joi.string().min(3).required(),
   email: joi.string().email({ tlds: { allow: false } }),
-  password: joi.string().min(6).required()
+  password: joi.string().required()
+});
+
+const loginSchema = joi.object({
+  email: joi.string().required().email({ tlds: { allow: false } }),
+  password: joi.string().required()
 });
 
 const mongoClient = new MongoClient(process.env.DATABASE_URL);
@@ -36,7 +41,7 @@ server.post("/sign-up", async (req, res)=>{
 
   const usuarioExiste = await usuariosCollection.findOne({name, email});
 
-  const validacao = usuarioSchema.validate({name, email, password}, { abortEarly: false });
+  const validacao = cadastroSchema.validate({name, email, password}, { abortEarly: false });
 
   if(validacao.error){
       const erros = validacao.error.details.map((detail) => detail.message);
@@ -61,8 +66,31 @@ server.post("/sign-up", async (req, res)=>{
   }
 });
 
-server.get("/login", async (req, res)=>{
+server.post("/login", async (req, res)=>{
+  const {email, password} = req.body;
 
+  const validacao = loginSchema.validate({email, password}, { abortEarly: false });
+
+  if(validacao.error){
+    const erros = validacao.error.details.map((detail) => detail.message);
+    res.status(422).send(erros);
+    return;
+};
+
+  const userEmail = await usuariosCollection.findOne({ email: email });
+
+  if (!userEmail) return res.status(401).send('Email não cadastrado!');
+
+  const verifique = userEmail.password === password;
+
+  if (!verifique) {
+    return res.status(401).send('Senha incorreta!');
+  }
+
+  return res.send({
+    name: userEmail.name,
+    email: userEmail.email,
+  });
 });
 
 server.listen(PORT, () => {
