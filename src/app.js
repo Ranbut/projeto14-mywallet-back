@@ -5,6 +5,7 @@ import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
 import { v4 as uuid } from 'uuid';
 import bcrypt from 'bcrypt';
+import dayjs from 'dayjs';
 
 dotenv.config();
 const server = express();
@@ -22,6 +23,12 @@ const cadastroSchema = joi.object({
 const loginSchema = joi.object({
   email: joi.string().required().email({ tlds: { allow: false } }),
   password: joi.string().required()
+});
+
+const transacaoSchema = joi.object({
+  value: joi.number().min(0).required(),
+  description: joi.string().required(),
+  type: joi.valid('entrada', 'saida').required()
 });
 
 const mongoClient = new MongoClient(process.env.DATABASE_URL);
@@ -106,6 +113,61 @@ server.post("/login", async (req, res)=>{
     token,
     name: userEmail.name
   });
+});
+
+
+server.get('/transaction', async (req, res) => {
+  const autorizacaoData = req.headers.authorization;
+
+  if (!autorizacaoData) return res.status(401).send('Coloque o token de autorização');
+
+  const token = autorizacaoData.replace('Bearer ', '');
+
+  const sessao = await sessoesCollection.findOne({ token });
+
+  if (!sessao) return res.sendStatus(401);
+
+  const user = await usuariosCollection.findOne({ _id: sessao.userId });
+
+  if (!user) return res.sendStatus(404);
+
+  res.send(user.transactions);
+});
+
+server.post('/transaction', async (req, res) => {
+  const autorizacaoData = req.headers.authorization;
+  const {value, description, type} = req.body;
+
+  if (!autorizacaoData) return res.status(401).send('Informe o token de autorização');
+
+  const token = autorizacaoData.replace('Bearer ', '');
+
+  const sessao = await sessoesCollection.findOne({ token });
+
+  if (!sessao) return res.sendStatus(401);
+
+  const validacao = transacaoSchema.validate({value, description, type}, { abortEarly: false });
+
+  if(validacao.error){
+    const erros = validacao.error.details.map((detail) => detail.message);
+    res.status(422).send(erros);
+    return;
+};
+
+  const user = await usuariosCollection.findOne({ _id: sessao.userId });
+
+  if (!user) return res.sendStatus(401);
+
+  const novaTransacao = { ...validacao, date: dayjs().format('DD/MM') };
+
+  await usuariosCollection.updateOne({
+    _id: sessao.userId
+  },
+    {
+      $set: { transactions: [...user.transactions, novaTransacao] }
+    });
+
+  res.sendStatus(201);
 });
 
 server.listen(PORT, () => {
