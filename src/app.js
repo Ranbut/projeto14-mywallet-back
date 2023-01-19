@@ -3,6 +3,8 @@ import joi from 'joi';
 import cors from 'cors';
 import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
+import { v4 as uuid } from 'uuid';
+import bcrypt from 'bcrypt';
 
 dotenv.config();
 const server = express();
@@ -35,32 +37,36 @@ try{
 };
 
 const usuariosCollection = db.collection("usuarios");
+const sessoesCollection = db.collection("sessoes");
 
 server.post("/sign-up", async (req, res)=>{
-  const {name, email, password} = req.body;
-
-  const usuarioExiste = await usuariosCollection.findOne({name, email});
+  const { name, email, password } = req.body;
 
   const validacao = cadastroSchema.validate({name, email, password}, { abortEarly: false });
 
   if(validacao.error){
-      const erros = validacao.error.details.map((detail) => detail.message);
-      res.status(422).send(erros);
-      return;
-  };
+    const erros = validacao.error.details.map((detail) => detail.message);
+    res.status(422).send(erros);
+    return;
+};
 
-  if(usuarioExiste){
-      res.sendStatus(409);
-      return;
-  }
+  const emailExiste = !!(await usuariosCollection.findOne({ email: email }));
+
+  if (emailExiste) return res.status(409).send('Email já cadastrado');
+
+  const hashPassword = await bcrypt.hash(password, 10);
 
   try{
-     await usuariosCollection.insertOne({
-      name,
-      email,
-      password
-     });
-     res.sendStatus(201);
+    const user = {
+      name: name,
+      email: email,
+      password: hashPassword,
+      transactions: [],
+    };
+  
+    await usuariosCollection.insertOne(user);
+    res.sendStatus(201);
+
   }catch(err){
       res.status(500).send(err);
   }
@@ -79,17 +85,27 @@ server.post("/login", async (req, res)=>{
 
   const userEmail = await usuariosCollection.findOne({ email: email });
 
-  if (!userEmail) return res.status(401).send('Email não cadastrado!');
+  if (!userEmail) return res.status(401).send('Email não cadastrado');
 
-  const verifique = userEmail.password === password;
+  const verifiqueSenha = await bcrypt.compare(password, userEmail.password);
 
-  if (!verifique) {
-    return res.status(401).send('Senha incorreta!');
+  if (!verifiqueSenha) {
+    return res.status(401).send('Senha incorreta');
   }
 
+  const _id = uuid();
+  const token = uuid();
+
+  const sessaoData = {
+    userId: _id,
+    token
+  };
+
+  await sessoesCollection.insertOne(sessaoData);
+
   return res.send({
-    name: userEmail.name,
-    email: userEmail.email,
+    token,
+    name: userEmail.name
   });
 });
 
