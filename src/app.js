@@ -93,11 +93,10 @@ server.post("/login", async (req, res)=>{
     return res.status(401).send('Senha incorreta');
   }
 
-  const _id = uuid();
   const token = uuid();
 
   const sessaoData = {
-    userId: _id,
+    userId: userEmail._id,
     token
   };
 
