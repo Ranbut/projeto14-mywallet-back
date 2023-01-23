@@ -8,6 +8,6 @@ import { cadastroSchema } from '../schemas/cadastroSchema.js';
 const router = Router();
 
 router.post('/login', validateSchema(loginSchema), Login);
-router.post('/cadastro', validateSchema(cadastroSchema), Cadastro);
+router.post('/sign-up', validateSchema(cadastroSchema), Cadastro);
 
 export default router;
